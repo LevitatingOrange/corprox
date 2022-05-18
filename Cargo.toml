@@ -1,0 +1,24 @@
+[package]
+name = "corprox"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.18", features = ["full"] }
+tokio-stream = {version="0.1", features = ["fs"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+eyre = "0.6"
+color-eyre = "0.6"
+
+serde = { version = "1", features = ["derive", "rc"] }
+toml = "0.5"
+ipnet = { version = "2.5", features = ["serde"] }
+clap = { version = "3.1", features= ["derive"] }
+dialoguer = "0.10"
+
+dbus = "0.9"
+dbus-tokio = "0.7"
+libc = "0.2"
