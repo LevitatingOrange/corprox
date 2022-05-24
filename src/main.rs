@@ -66,6 +66,15 @@ struct Cli {
     #[clap(short, long)]
     vpn_name: Option<String>,
 
+    /// Specify username on the command line. If omitted will try to use GPG file in config. If
+    /// specfied, `password` has to be specified too.
+    #[clap(short, long)]
+    username: Option<String>,
+    /// Specify password on the command line. If omitted will try to use GPG file in config. If
+    /// specfied, `username` has to be specified too.
+    #[clap(short, long)]
+    password: Option<String>,
+
     #[clap(subcommand)]
     command: Commands,
 }
@@ -213,6 +222,8 @@ async fn start(
     vpn_config: &VpnConfig,
     run_path: &Path,
     ctx_dir: &Path,
+    username: Option<String>,
+    password: Option<String>,
     dbus_conn: Arc<SyncConnection>,
 ) -> Result<()> {
     let vpn_config_path = ctx_dir.join(&vpn_config.name);
@@ -246,7 +257,11 @@ async fn start(
     let out_path = run_path.join(VPN_CONFIG_FILENAME);
     info!("Writing config to {:?}", out_path);
     fs::write(run_path.join("config.ovpn"), &config_content).await?;
-    let (username, password) = get_credentials(&vpn_config.password_name).await?;
+    let (username, password) = if let Some(creds) = username.and_then(|u| password.map(|p| (u, p))) {
+        creds
+    } else {
+        get_credentials(&vpn_config.password_name).await?
+    };
     let creds_path = run_path.join(CREDSFILE_NAME);
     fs::write(creds_path, format!("{}\n{}\n", username, password)).await?;
 
@@ -302,10 +317,12 @@ async fn run(
     vpn_config: &VpnConfig,
     run_path: &Path,
     ctx_dir: &Path,
+    username: Option<String>,
+    password: Option<String>,
     dbus_conn: Arc<SyncConnection>,
 ) -> Result<()> {
     match command {
-        Commands::Start => start(vpn_config, run_path, ctx_dir, dbus_conn).await?,
+        Commands::Start => start(vpn_config, run_path, ctx_dir, username, password, dbus_conn).await?,
         Commands::Stop => stop(vpn_config, run_path).await?,
     }
     Ok(())
@@ -320,6 +337,9 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
 
     let cli = Cli::parse();
+
+    ensure!(cli.username.is_some() == cli.password.is_some(), "You have to specify both username and password or none of both"); 
+
     let config_path = cli
         .config_file
         .map(|d| Ok::<PathBuf, Report>(d))
@@ -344,13 +364,14 @@ async fn main() -> Result<()> {
 
     let run_path = Path::new(RUN_DIR).join(&vpn_config.name);
 
+
     let mut result: Result<()> = Ok(());
     tokio::select! {
         _ = shutdown_signal() => {
             println!("User cancelled, running cleanup...");
 
         },
-        new_result = run(cli.command, &vpn_config, &run_path, &ctx_dir, conn) => {
+        new_result = run(cli.command, &vpn_config, &run_path, &ctx_dir, cli.username, cli.password, conn) => {
             result = new_result;
         },
         new_result = &mut resource_handle => {
